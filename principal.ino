@@ -68,6 +68,40 @@ String NbrToBitS(int entrada, int tamanho = 4)
   return out;
 }
 
+bool crcCmp(String ult_frm, String DIV)
+{
+  String dados = "";
+  String crc_rec = "";
+  for (int i = 4; i < (ult_frm.length() - 16); i++)  dados += ult_frm[i];
+  for (int i = ult_frm.length() - 16; i < ult_frm.length(); i++) crc_rec += ult_frm[i];
+
+  if (crcGen(dados, DIV) == crc_rec) return 1;
+  else return 0;
+}
+
+String askFrame(String ult_frm, String my_addr, int my_NS, int my_ACK)// PEDE UM FRAME NOVO---------------------
+{
+  String ask_frame = "";
+  
+  //montando o frame: addrENV addrREC iFRAME nsENV 0 ackENV data(fixo) CRC(fixo)
+  ask_frame += my_addr;
+  //8b
+  ask_frame += ult_frm[0];
+  ask_frame += ult_frm[1];
+  ask_frame += ult_frm[2];
+  ask_frame += ult_frm[3];
+  //8b
+  ask_frame += '0';
+  ask_frame += NbrToBitS(my_NS, 3);
+  ask_frame += '0';
+  ask_frame += NbrToBitS(my_ACK, 3);
+  
+  //ele não ira usar nem data nem crc
+  
+  return ask_frame;
+
+}
+
 bool RX0_TX1 = 0;
 
 int com_byte;
@@ -75,6 +109,7 @@ String bts_clone;
 int AUX;
 String AUX1;
 bool alternar = 0; //0: buffer 1 manda|| 1: buffer 2
+int CRC = 0;// 0 não pede outro frame, 1 pede pra s1, 2 pede pra s2
 
 
 void setup()
@@ -87,99 +122,156 @@ void setup()
 
 void loop()
 {
+  bts_clone = "";
   if (RX0_TX1) //fala---------------------------------------------------------
   {
-    Serial.write(start_end_Flag);
-
-
-    //ADDRESS---------------------
-
-    if (alternar)//buffer 1
+    if (CRC == 0)
     {
-      bts_clone += s1_addr;
-      bts_clone += p_addr;
-    }
-    else //buffer 2
-    {
-      bts_clone += s2_addr;
-      bts_clone += p_addr;
-    }
+      Serial.write(start_end_Flag);
 
-    com_byte = strToNbr(bts_clone);
+
+      //ADDRESS---------------------
+
+      if (alternar)//buffer 1
+      {
+        bts_clone += s1_addr;
+        bts_clone += p_addr;
+      }
+      else //buffer 2
+      {
+        bts_clone += s2_addr;
+        bts_clone += p_addr;
+      }
+
+      com_byte = strToNbr(bts_clone);
+      bts_clone = "";
+
+      Serial.write(com_byte);//<--ADDRESS
+
+
+
+      //CONTROLL---------------------
+
+      if (alternar)//buffer 1
+      {
+        bts_clone += '0';
+        bts_clone += NbrToBitS(NS1, 3);
+        bts_clone += '0';
+        bts_clone += NbrToBitS(ACK1, 3);
+      }
+      else // buffer 2
+      {
+        bts_clone += '0';
+        bts_clone += NbrToBitS(NS2, 3);
+        bts_clone += '0';
+        bts_clone += NbrToBitS(ACK2, 3);
+      }
+
+      com_byte = strToNbr(bts_clone);
+      bts_clone = "";
+      Serial.write(com_byte);//<--CONTROLL
+
+
+
+      //DADOS---------------------
+
+      //NS par envia [0], NS ímpar
+      if (alternar == 0)
+      {
+        if (NS1/2)
+        {
+          com_byte = strToNbr(buffer1[0]);
+          bts_clone = buffer1[0];
+        }
+        else
+        { 
+          com_byte = strToNbr(buffer1[1]);
+          bts_clone = buffer1[1];
+        }
+        NS1++;
+      } 
+      else 
+      {
+        if (NS2/2)
+        {
+          com_byte = strToNbr(buffer2[0]);
+          bts_clone = buffer2[0];
+        }
+        else
+        {
+          com_byte = strToNbr(buffer2[1]);
+          bts_clone = buffer2[1];
+        }
+        NS2++;
+      }
+      alternar = !alternar;
+
+      Serial.write(com_byte);//<--DADOS
+
+
+      //CRC---------------------
+      com_byte = strToNbr(crcGen(bts_clone, DIV));
+
+      Serial.write(com_byte); //<--CRC
+
+      Serial.write(start_end_Flag);
+      
+    }
+    else if (CRC == 1) //pede para o s1
+    {
+      Serial.write(start_end_Flag);
+      
+      bts_clone = askFrame(ult_recebido1, p_addr, NS1, ACK1);
+      
+      //endereco
+      AUX1 = bts_clone[0];
+      AUX1 += bts_clone[1];
+      AUX1 += bts_clone[2];
+      AUX1 += bts_clone[3];
+      AUX1 += bts_clone[4];
+      AUX1 += bts_clone[5];
+      AUX1 += bts_clone[6];
+      AUX1 += bts_clone[7];
+
+      Serial.write(strToNbr(AUX1));
+
+      //control
+      bts_clone.remove(0, 8);
+
+      Serial.write(strToNbr(bts_clone));
+
+      Serial.write(start_end_Flag);
+      CRC = 0;
+    }
+    else //pede para s2
+    {
+      Serial.write(start_end_Flag);
+      bts_clone = askFrame(ult_recebido2, p_addr, NS2, ACK2);
+      
+      //endereco
+      AUX1 = bts_clone[0];
+      AUX1 += bts_clone[1];
+      AUX1 += bts_clone[2];
+      AUX1 += bts_clone[3];
+      AUX1 += bts_clone[4];
+      AUX1 += bts_clone[5];
+      AUX1 += bts_clone[6];
+      AUX1 += bts_clone[7];
+
+      Serial.write(strToNbr(AUX1));
+
+      //control
+      bts_clone.remove(0, 8);
+
+      Serial.write(strToNbr(bts_clone));
+
+      Serial.write(start_end_Flag);
+      CRC = 0;
+    }
+    RX0_TX1 = !RX0_TX1;
     bts_clone = "";
-
-    Serial.write(com_byte);//<--ADDRESS
-
-
-
-    //CONTROLL---------------------
-
-    if (alternar)//buffer 1
-    {
-      bts_clone += '0';
-      bts_clone += NbrToBitS(NS1, 3);
-      bts_clone += '0';
-      bts_clone += NbrToBitS(ACK1, 3);
-    }
-    else // buffer 2
-    {
-      bts_clone += '0';
-      bts_clone += NbrToBitS(NS2, 3);
-      bts_clone += '0';
-      bts_clone += NbrToBitS(ACK2, 3);
-    }
-
-    com_byte = strToNbr(bts_clone);
-    bts_clone = "";
-    Serial.write(com_byte);//<--CONTROLL
-
-
-
-    //DADOS---------------------
-
-    //NS par envia [0], NS ímpar
-    if (alternar == 0)
-    {
-      if (NS1/2)
-      {
-        com_byte = strToNbr(buffer1[0]);
-        bts_clone = buffer1[0];
-      }
-      else
-      { 
-        com_byte = strToNbr(buffer1[1]);
-        bts_clone = buffer1[1];
-      }
-      NS1++;
-    } 
-    else 
-    {
-      if (NS2/2)
-      {
-        com_byte = strToNbr(buffer2[0]);
-        bts_clone = buffer2[0];
-      }
-      else
-      {
-        com_byte = strToNbr(buffer2[1]);
-        bts_clone = buffer2[1];
-      }
-      NS2++;
-    }
-    alternar = !alternar;
-
-    Serial.write(com_byte);//<--DADOS
-
-
-    //CRC---------------------
-    com_byte = strToNbr(crcGen(bts_clone, DIV));
-
-    Serial.write(com_byte); //<--CRC
-
-    Serial.write(start_end_Flag);
-    RX0_TX1 = 0;
   }
-  else if(Serial.available() > 0)//ouve--------------------------------------------
+  else if((Serial.available() > 0) && (!RX0_TX1))//ouve--------------------------------------------
   {    
     com_byte = Serial.read();
 
@@ -197,7 +289,7 @@ void loop()
 
         bts_clone.remove(0, 4);//tira o destinatário
 
-        if (bitRead(com_byte, 0) == 1) ult_recebido1 = bts_clone; // pega o remetente e salva
+        if (bitRead(com_byte, 0) == 1) ult_recebido1 = bts_clone; // pega o remetente e salva-----------
         else if (bitRead(com_byte, 1) == 1) ult_recebido2 = bts_clone;
         
         //Seleção de onde que veio a mensagem----------------------
@@ -234,12 +326,33 @@ void loop()
             }
             while (com_byte != start_end_Flag);
 
-            ult_recebido2.remove((ult_recebido2.length() - 8), 8); //arranca a flag final
+            ult_recebido1.remove((ult_recebido1.length() - 8), 8); //arranca a flag final
+
+
+            //CRC ---------------------------------------------------------------------------------------
+            CRC = (!(crcCmp(ult_recebido1, DIV)));// mantém 0 quando ta td certo, 1 quando deu ruim
           }
           else //caso o frame anterior não tenha sido mandado corretamente------------------------------
           {
+            //realiza a opr normalmente porém, incrementando apenas o NS e sem armazenar nada
+            //DADOS --------------------------
+            NS1 = AUX;
+            //AUX1 pega o NS da msg--------------------------
+            AUX1 = bts_clone[1];
+            AUX1 += bts_clone[2];
+            AUX1 += bts_clone[3];
 
+            do
+            {
+              com_byte = Serial.read();
+              delay(500);
+            }
+            while (com_byte != start_end_Flag);
+
+            ult_recebido1.remove((ult_recebido1.length() - 8), 8); //arranca a flag final
+            
           }
+
         }
         else if (bitRead(com_byte, 1) == 1)//S2--------------------------------------------------------
         {
@@ -268,18 +381,40 @@ void loop()
             do
             {
               com_byte = Serial.read();
-              ult_recebido2 = NbrToBitS(com_byte);
+              ult_recebido2 = NbrToBitS(com_byte, 8);
               delay(500);
             }
             while (com_byte != start_end_Flag);
 
             ult_recebido2.remove((ult_recebido2.length() - 8), 8); //arranca a flag final
+
+            //CRC ---------------------------------------------------------------------------------------
+            CRC = (!(crcCmp(ult_recebido2, DIV))) * 2;// mantém 0 quando ta td certo, 2 quando deu ruim
           }
           else //caso o frame anterior não tenha sido mandado corretamente----------------------------------
           {
+            //realiza a opr normalmente porém, incrementando apenas o NS e sem armazenar nada
+            //DADOS --------------------------
+            NS2 = AUX;
+            //AUX1 pega o NS da msg--------------------------
+            AUX1 = bts_clone[1];
+            AUX1 += bts_clone[2];
+            AUX1 += bts_clone[3];
+
+            do
+            {
+              com_byte = Serial.read();
+              delay(500);
+            }
+            while (com_byte != start_end_Flag);
+
+            ult_recebido2.remove((ult_recebido2.length() - 8), 8); //arranca a flag final
+            
 
           }
         }
+        delay(500);
+        RX0_TX1 = !RX0_TX1;//volta ao modo falar----------------------------------------
       }
     }
   }
