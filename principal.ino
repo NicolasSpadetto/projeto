@@ -79,12 +79,12 @@ bool crcCmp(String ult_frm, String DIV)
   else return 0;
 }
 
-String askFrame(String ult_frm, String my_addr, int my_NS, int my_ACK)// PEDE UM FRAME NOVO---------------------
+String askFrame(String ult_frm, String s1_addr, int my_NS, int my_ACK)// PEDE UM FRAME NOVO---------------------
 {
   String ask_frame = "";
   
   //montando o frame: addrENV addrREC iFRAME nsENV 0 ackENV data(fixo) CRC(fixo)
-  ask_frame += my_addr;
+  ask_frame += s1_addr;
   //8b
   ask_frame += ult_frm[0];
   ask_frame += ult_frm[1];
@@ -175,7 +175,7 @@ void loop()
 
       //DADOS---------------------
 
-      //NS par envia [0], NS ímpar
+      //NS1 par envia [0], NS1 ímpar
       if (alternar == 0)
       {
         if (NS1/2)
@@ -306,16 +306,16 @@ void loop()
           AUX1 += bts_clone[bts_clone.length() - 1];
           AUX = strToNbr(AUX1);
 
-          if (AUX > NS1) //compara o ack da msg com ns do ultimo frame enviado--------------------
+          if (AUX > NS1) //compara o ack da msg com NS1 do ultimo frame enviado--------------------
           {
             NS1 = AUX; //move a fila do buffer------------------
 
-            //AUX1 pega o NS da msg--------------------------
+            //AUX1 pega o NS1 da msg--------------------------
             AUX1 = bts_clone[1];
             AUX1 += bts_clone[2];
             AUX1 += bts_clone[3];
 
-            ACK1 = AUX + 1;//incrementa ack1------------------------
+            ACK1 = strToNbr(AUX1) + 1;//incrementa ack1------------------------
 
             //DADOS --------------------------
             do
@@ -331,17 +331,20 @@ void loop()
 
             //CRC ---------------------------------------------------------------------------------------
             CRC = (!(crcCmp(ult_recebido1, DIV)));// mantém 0 quando ta td certo, 1 quando deu ruim
+
+            if (CRC != 0) ACK1--;
+          
           }
           else //caso o frame anterior não tenha sido mandado corretamente------------------------------
           {
-            //realiza a opr normalmente porém, incrementando apenas o NS e sem armazenar nada
+            //realiza a opr normalmente porém, sem armazenar nada
             //DADOS --------------------------
             NS1 = AUX;
-            //AUX1 pega o NS da msg--------------------------
+            //AUX1 pega o NS1 da msg--------------------------
             AUX1 = bts_clone[1];
             AUX1 += bts_clone[2];
             AUX1 += bts_clone[3];
-
+            ACK1 = strToNbr(AUX1) + 1;
             do
             {
               com_byte = Serial.read();
@@ -367,16 +370,16 @@ void loop()
           AUX1 += bts_clone[bts_clone.length() - 1];
           AUX = strToNbr(AUX1);
 
-          if (AUX > NS1) //compara o ack da msg com ns do ultimo frame enviado-----------
+          if (AUX > NS1) //compara o ack da msg com NS1 do ultimo frame enviado-----------
           {
             NS2 = AUX; //move a fila do buffer--------------------
 
-            //AUX1 pega o NS da msg-----------------
+            //AUX1 pega o NS1 da msg-----------------
             AUX1 = bts_clone[1];
             AUX1 += bts_clone[2];
             AUX1 += bts_clone[3];
 
-            ACK2 = AUX + 1;//incrementa ack1-------------------------
+            ACK2 = strToNbr(AUX1) + 1;//incrementa ack2-------------------------
             
             do
             {
@@ -390,10 +393,12 @@ void loop()
 
             //CRC ---------------------------------------------------------------------------------------
             CRC = (!(crcCmp(ult_recebido2, DIV))) * 2;// mantém 0 quando ta td certo, 2 quando deu ruim
+
+            if (CRC != 0) ACK1--;
           }
           else //caso o frame anterior não tenha sido mandado corretamente----------------------------------
           {
-            //realiza a opr normalmente porém, incrementando apenas o NS e sem armazenar nada
+            //realiza a opr normalmente porém, sem armazenar nada
             //DADOS --------------------------
             NS2 = AUX;
             //AUX1 pega o NS da msg--------------------------
@@ -401,6 +406,7 @@ void loop()
             AUX1 += bts_clone[2];
             AUX1 += bts_clone[3];
 
+            ACK2 = strToNbr(AUX1) + 1;
             do
             {
               com_byte = Serial.read();
