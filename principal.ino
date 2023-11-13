@@ -24,12 +24,18 @@ String DIV = "1000100000010001";
 String crcGen(String entrada, String DIV)
 {
     int div_totais = entrada.length();
-    String crc;
+    int DIV_mag = DIV.length();
+    String crc = "";
 
-    for (int i = 0; i < (DIV.length() - 1); i++) entrada+= '0';
-    for (int i = 0; i < div_totais; i++) for (int j = 0; j < DIV.length(); j++) entrada[i + j] = (entrada[i + j] != DIV[j]);
+    for (int i = 0; i < (DIV_mag - 1); i++) entrada += '0';
+ 
+    for (int i = 0; i < div_totais; i++) for (int j = 0; j < DIV_mag; j++) 
+    {
+      if (entrada[i + j] != DIV[j]) entrada[i + j] = '1';
+      else entrada[i + j] = '0';
+    }
 
-    for (int i = (entrada.length() - 1); i < DIV.length(); i++) crc += entrada[i];
+    for (int i = (div_totais - 1); i < entrada.length(); i++) crc += entrada[i];
 
     return crc;
 }
@@ -37,33 +43,35 @@ String crcGen(String entrada, String DIV)
 int strToNbr(String dado)
 {
   int out = 0;
-  int pow2 = 1;
-  for (int i = 0; i < dado.length(); i++) 
+  int pow2;
+  int mag = dado.length();
+  
+  for (int i = 0; i < mag; i++) 
   {
-    pow2 = 1;
+    pow2 = 0;
     
-    for (int j = 0; j < (dado.length() - 1); j++)
+    if (dado[i] == '1') 
     {
-      pow2 *= 2;
+      pow2 = 1;
+      for (int j = 0; j < (mag - i - 1); j++) pow2 *= 2;
     }
-
-    out += pow2;
+    
+    out += pow2;    
   }
-  if (dado[dado.length() - 1]) out += 1;
-
+  
   return out;
 }
 
 String NbrToBitS(int entrada, int tamanho = 4)
 {
   String ent_clone = String(entrada, BIN);
-  String out;
+  String out = "";
 
-  for (int i = (tamanho - 1); i >= 0; i++) out += '0';
+  for (int i = 0; i < tamanho; i++) out += '0';
 
-  int dif_tamanho = tamanho - ent_clone.length();
+  int dif = tamanho - ent_clone.length();
 
-  for (int i = (ent_clone.length() - 1); i >= 0; i++) out[i] = ent_clone[i - dif_tamanho];
+  for (int i = (ent_clone.length() - 1); i >= 0; i--) out[i + dif] = ent_clone[i];
 
   return out;
 }
@@ -122,63 +130,61 @@ void setup()
 
 void loop()
 {
-  bts_clone = "";
+  delay(1000);
   if (RX0_TX1) //fala---------------------------------------------------------
   {
     if (CRC == 0)
     {
       Serial.write(start_end_Flag);
-
-
+      
       //ADDRESS---------------------
 
-      if (alternar)//buffer 1
+      if (!alternar)//buffer 1
       {
-        bts_clone += s1_addr;
+        bts_clone = s1_addr;
         bts_clone += p_addr;
+
       }
       else //buffer 2
       {
-        bts_clone += s2_addr;
+        bts_clone = s2_addr;
         bts_clone += p_addr;
+        
       }
+      
 
       com_byte = strToNbr(bts_clone);
-      bts_clone = "";
-
+      
       Serial.write(com_byte);//<--ADDRESS
-
-
 
       //CONTROLL---------------------
 
-      if (alternar)//buffer 1
+      if (!alternar)//buffer 1
       {
-        bts_clone += '0';
+        bts_clone = '0';
         bts_clone += NbrToBitS(NS1, 3);
         bts_clone += '0';
         bts_clone += NbrToBitS(ACK1, 3);
       }
       else // buffer 2
       {
-        bts_clone += '0';
+        bts_clone = '0';
         bts_clone += NbrToBitS(NS2, 3);
         bts_clone += '0';
         bts_clone += NbrToBitS(ACK2, 3);
       }
-
+      
       com_byte = strToNbr(bts_clone);
-      bts_clone = "";
+
+      
       Serial.write(com_byte);//<--CONTROLL
-
-
 
       //DADOS---------------------
 
       //NS1 par envia [0], NS1 ímpar
       if (alternar == 0)
       {
-        if (NS1/2)
+        if ((NS1 % 2) == 0)
         {
           com_byte = strToNbr(buffer1[0]);
           bts_clone = buffer1[0];
@@ -192,7 +198,7 @@ void loop()
       } 
       else 
       {
-        if (NS2/2)
+        if ((NS2 % 2) == 0)
         {
           com_byte = strToNbr(buffer2[0]);
           bts_clone = buffer2[0];
@@ -204,18 +210,19 @@ void loop()
         }
         NS2++;
       }
-      alternar = !alternar;
-
+      
+      
       Serial.write(com_byte);//<--DADOS
-
-
+            
       //CRC---------------------
       com_byte = strToNbr(crcGen(bts_clone, DIV));
 
+            
       Serial.write(com_byte); //<--CRC
 
       Serial.write(start_end_Flag);
       
+      alternar = !alternar;
     }
     else if (CRC == 1) //pede para o s1
     {
@@ -269,54 +276,67 @@ void loop()
       CRC = 0;
     }
     RX0_TX1 = !RX0_TX1;
-    bts_clone = "";
+    
   }
-  else if((Serial.available() > 0) && (!RX0_TX1))//ouve--------------------------------------------
+  else if(Serial.available() > 0)//ouve--------------------------------------------
   {    
+    delay(3000);
+    
+    
     com_byte = Serial.read();
 
     if (com_byte == start_end_Flag)
     {
-      delay(500);
+      delay(1000);
 
       //ADDRESS---------------------
-
+      
       com_byte = Serial.read();
-      delay(500);
-      if (bitRead(com_byte, 4) == strToNbr(p_addr))
+
+      delay(1000);
+
+      AUX1 = NbrToBitS(com_byte, 8);
+      
+      bts_clone = AUX1[0];
+      bts_clone += AUX1[1];
+      bts_clone += AUX1[2];
+      bts_clone += AUX1[3];
+
+
+      if (bts_clone == p_addr)
       {
-        bts_clone = NbrToBitS(com_byte, 8);
+        AUX1.remove(0, 4);//tira o destinatário
 
-        bts_clone.remove(0, 4);//tira o destinatário
-
-        if (bitRead(com_byte, 0) == 1) ult_recebido1 = bts_clone; // pega o remetente e salva-----------
-        else if (bitRead(com_byte, 1) == 1) ult_recebido2 = bts_clone;
+        if (AUX1[0] == '1') ult_recebido1 = AUX1; // pega o remetente e salva-----------
+        else if (AUX1[1] == '1') ult_recebido2 = AUX1;
         
         //Seleção de onde que veio a mensagem----------------------
-        if (bitRead(com_byte, 0) == 1) // S1--------------------------------------------------------
+        if (AUX1 == s1_addr) // S1--------------------------------------------------------
         {
           //CONTROLL---------------------
           com_byte = Serial.read();
           bts_clone = NbrToBitS(com_byte, 8);
-          delay(500);
+          delay(1000);
 
+          AUX1 = bts_clone[1];
+          AUX1 += bts_clone[2];
+          AUX1 += bts_clone[3];
+
+          AUX = strToNbr(AUX1);// segura o NS da mensagem
+
+          ACK1 = strToNbr(AUX1) + 1;//incrementa ack1------------------------
+
+                    
           //pega o ack põe em AUX
           AUX1 = bts_clone[bts_clone.length() - 3];
           AUX1 += bts_clone[bts_clone.length() - 2];
           AUX1 += bts_clone[bts_clone.length() - 1];
           AUX = strToNbr(AUX1);
 
-          if (AUX > NS1) //compara o ack da msg com NS1 do ultimo frame enviado--------------------
+
+
+          if (AUX == NS1) //compara o ack da msg com NS1 do ultimo frame enviado--------------------
           {
-            NS1 = AUX; //move a fila do buffer------------------
-
-            //AUX1 pega o NS1 da msg--------------------------
-            AUX1 = bts_clone[1];
-            AUX1 += bts_clone[2];
-            AUX1 += bts_clone[3];
-
-            ACK1 = strToNbr(AUX1) + 1;//incrementa ack1------------------------
-
             //DADOS --------------------------
             do
             {
@@ -328,23 +348,24 @@ void loop()
 
             ult_recebido1.remove((ult_recebido1.length() - 8), 8); //arranca a flag final
 
-
+            AUX1 = ult_recebido1;
+            AUX1.remove(0, 4); //arranca endereço
             //CRC ---------------------------------------------------------------------------------------
-            CRC = (!(crcCmp(ult_recebido1, DIV)));// mantém 0 quando ta td certo, 1 quando deu ruim
+            CRC = (!(crcCmp(AUX1, DIV)));// mantém 0 quando ta td certo, 1 quando deu ruim
+
+            
+            
 
             if (CRC != 0) ACK1--;
           
           }
-          else //caso o frame anterior não tenha sido mandado corretamente------------------------------
+          else //caso do ult frame, que este mandou, não tenha sido mandado corretamente----------------------------------
           {
-            //realiza a opr normalmente porém, sem armazenar nada
+            alternar = !alternar; // para poder responder o mesmo secundário
+            //realiza a opr normalmente porém, voltando uma instancia de NS e sem armazenar nada
             //DADOS --------------------------
-            NS1 = AUX;
-            //AUX1 pega o NS1 da msg--------------------------
-            AUX1 = bts_clone[1];
-            AUX1 += bts_clone[2];
-            AUX1 += bts_clone[3];
-            ACK1 = strToNbr(AUX1) + 1;
+            NS1 = AUX; //volta um NS
+
             do
             {
               com_byte = Serial.read();
@@ -357,60 +378,61 @@ void loop()
           }
 
         }
-        else if (bitRead(com_byte, 1) == 1)//S2--------------------------------------------------------
+        else if (AUX1 == s2_addr)//S2--------------------------------------------------------
         {
           //CONTROLL---------------------
           com_byte = Serial.read();
           bts_clone = NbrToBitS(com_byte, 8);
-          delay(500);
+          delay(1000);
 
+          AUX1 = bts_clone[1];
+          AUX1 += bts_clone[2];
+          AUX1 += bts_clone[3];
+
+          AUX = strToNbr(AUX1);// segura o NS da mensagem
+
+          ACK2 = AUX + 1;//incrementa ack1------------------------
+          
           //pega o ack põe em AUX--------------------
           AUX1 = bts_clone[bts_clone.length() - 3];
           AUX1 += bts_clone[bts_clone.length() - 2];
           AUX1 += bts_clone[bts_clone.length() - 1];
           AUX = strToNbr(AUX1);
 
-          if (AUX > NS1) //compara o ack da msg com NS1 do ultimo frame enviado-----------
+          if (AUX == NS2) //compara o ack da msg com NS1 do ultimo frame enviado-----------
           {
-            NS2 = AUX; //move a fila do buffer--------------------
-
-            //AUX1 pega o NS1 da msg-----------------
-            AUX1 = bts_clone[1];
-            AUX1 += bts_clone[2];
-            AUX1 += bts_clone[3];
-
-            ACK2 = strToNbr(AUX1) + 1;//incrementa ack2-------------------------
             
+            //DADOS --------------------------
             do
             {
               com_byte = Serial.read();
               ult_recebido2 = NbrToBitS(com_byte, 8);
-              delay(500);
+              delay(1000);
             }
             while (com_byte != start_end_Flag);
 
             ult_recebido2.remove((ult_recebido2.length() - 8), 8); //arranca a flag final
 
+            AUX1 = ult_recebido2;
+            AUX1.remove(0, 4); //arranca endereço
+
             //CRC ---------------------------------------------------------------------------------------
-            CRC = (!(crcCmp(ult_recebido2, DIV))) * 2;// mantém 0 quando ta td certo, 2 quando deu ruim
-
+            CRC = (!(crcCmp(AUX1, DIV))) * 2;// mantém 0 quando ta td certo, 2 quando deu ruim
+            
             if (CRC != 0) ACK1--;
-          }
-          else //caso o frame anterior não tenha sido mandado corretamente----------------------------------
-          {
-            //realiza a opr normalmente porém, sem armazenar nada
-            //DADOS --------------------------
-            NS2 = AUX;
-            //AUX1 pega o NS da msg--------------------------
-            AUX1 = bts_clone[1];
-            AUX1 += bts_clone[2];
-            AUX1 += bts_clone[3];
 
-            ACK2 = strToNbr(AUX1) + 1;
+          }
+          else //caso do ult frame, que este mandou, não tenha sido mandado corretamente----------------------------------
+          {
+            alternar = !alternar;
+            //realiza a opr normalmente porém, voltando uma instancia de NS e sem armazenar nada
+            //DADOS --------------------------
+            NS2 = AUX; //volta um NS
+
             do
             {
               com_byte = Serial.read();
-              delay(500);
+              delay(1000);
             }
             while (com_byte != start_end_Flag);
 
@@ -419,8 +441,13 @@ void loop()
 
           }
         }
-        delay(500);
+        delay(1500);
         RX0_TX1 = !RX0_TX1;//volta ao modo falar----------------------------------------
+        
+        Serial.println(NS1);        
+        Serial.println(ACK1);
+        //Serial.println(NS2);
+        //Serial.println(ACK2);
       }
     }
   }
